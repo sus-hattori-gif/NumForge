@@ -74,18 +74,29 @@ Follow the on-screen prompts:
 
 ## Pattern Syntax
 
-- Digits `0`–`9` are treated as **known**.
-- `X` is the placeholder for an **unknown** digit (expands to 0–9).
-- Formatting characters `+`, `-`, `(`, `)`, and space are preserved.
-- A pattern must contain at least one `X`.
+NumForge v1.1 supports four pattern constructs:
 
-Examples:
+| Syntax | Meaning | Example |
+|---|---|---|
+| `0`–`9` | Fixed digit | `09` |
+| `X` | Any digit 0–9 | `09XX...` |
+| `[a-b]` | Digit range | `[0-5]` = 0,1,2,3,4,5 |
+| `[abc]` | Digit set | `[02468]` = even digits |
+| `[a,b,c]` | Set with commas | `[0,2,4,6,8]` |
+| `[a-c,e]` | Mixed | `[0-3,7,9]` = 0,1,2,3,7,9 |
 
-| Pattern           | Meaning                                                     |
-| ----------------- | ----------------------------------------------------------- |
-| `0912XXX1234`     | Known prefix/suffix; 3 unknowns → 1,000 combinations        |
-| `98XXXXXXXXXX`    | 10 unknowns → 10,000,000,000 combinations                   |
-| `+1 (XXX) XXX-XXXX` | 10 unknowns; formatting preserved                         |
+Formatting characters `+`, `-`, `(`, `)`, and space are preserved.
+
+**Examples:**
+
+| Pattern | Combinations |
+|---|---|
+| `0912XXX1234` | 1,000 |
+| `0912[0-5]XX123` | 600 |
+| `0912[02468]XX123` | 500 |
+| `0912{1,3,5,7,9}XX123` (فقط با `[...]`) | — |
+| `0912[0-3,7,9]XX123` | 600 |
+| `+1 (XXX) XXX-XXXX` | 10,000,000,000 ⚠️ |
 
 ---
 
@@ -99,47 +110,34 @@ Input:
 Pattern: 0912XXX123
 ```
 
-Output:
+## Output System
+
+After choosing a pattern, NumForge asks:
+
+1. **Output mode**: terminal preview (first 50) or save to file.
+2. **Format**: `txt`, `csv`, or `jsonl`.
+3. **Compression**: plain or `.gz`.
+4. **Directory** and **filename**.
+
+Example paths:
 
 ```
-Country              : Iran (+98)
-Pattern              : 0912XXX123
-Unknown positions    : 3
-Total combinations   : 1,000
+D:\NumForge\results.csv
+/home/user/numforge/results.jsonl.gz
 ```
 
-Preview (first few lines):
+Overwriting an existing file requires explicit confirmation.
 
-```
-0912000123
-0912001123
-...
-```
+### Resume after Ctrl+C
 
-### Example 2 — saving to file
+If a job is interrupted, a `.numforge.state` file is written next to
+the output. On the next run, selecting the same output file offers:
 
-```
-Output directory: /home/user/numforge
-Filename        : results
-```
+- Resume from where it stopped
+- Start over (delete previous output)
+- Cancel
 
-Saved as `/home/user/numforge/results.txt`.
-
-### Example 3 — progress output
-
-```
-  Progress: 40,000/100,000 ( 40.0%) | 512,340 gen/s |   0.1s
-```
-
-### Example 4 — Ctrl+C handling
-
-```
-[!] Generation interrupted by user (Ctrl+C).
-    Partial output saved to: /home/user/numforge/results.txt
-    Combinations written: 42,133
-    Elapsed time: 0.3s
-```
-
+The state file is removed automatically after successful completion.
 ---
 
 ## Project Structure
