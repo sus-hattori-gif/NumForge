@@ -1,38 +1,46 @@
 """NumForge — CLI entry point.
 
 NumForge generates all possible numeric combinations matching a
-user-defined phone-number pattern. It is a purely local tool: it never
-performs network requests, never verifies real numbers, and never
-interacts with any telecom or messaging service.
+user-defined phone-number pattern. It is a purely local tool.
 """
 
 from __future__ import annotations
 
+import os
 import sys
-from typing import Optional
 
 from config import (
     CONFIRMATION_THRESHOLD,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_OUTPUT_FILENAME,
     MAX_COMBINATIONS,
+    SUPPORTED_FORMATS,
+    VERSION,
 )
 from countries import COUNTRIES, get_country_by_index
 from generator import iter_combinations
-from output import preview_in_terminal, print_summary, write_to_file
+from output import (
+    clear_state,
+    load_state,
+    preview_in_terminal,
+    print_summary,
+    write_to_file,
+)
 from validators import (
     ValidationError,
     calculate_combinations,
     count_unknowns,
     validate_filename,
+    validate_format,
     validate_menu_choice,
     validate_output_directory,
     validate_pattern,
 )
 
 
-BANNER = """================================
+BANNER = f"""================================
           NumForge
+            v{VERSION}
 ================================"""
 
 
@@ -41,7 +49,6 @@ BANNER = """================================
 # ---------------------------------------------------------------------------
 
 def prompt(message: str) -> str:
-    """Read a line from stdin, trimming whitespace."""
     try:
         return input(message).strip()
     except EOFError:
@@ -50,7 +57,6 @@ def prompt(message: str) -> str:
 
 
 def pause() -> None:
-    """Wait for the user to press Enter."""
     try:
         input("\nPress Enter to continue...")
     except EOFError:
@@ -61,13 +67,11 @@ def pause() -> None:
 # Menu screens
 # ---------------------------------------------------------------------------
 
-def choose_country() -> "object":
-    """Display the country selection menu and return the chosen Country."""
+def choose_country():
     print()
     print("Select a country:")
     for idx, country in enumerate(COUNTRIES, start=1):
         print(f"  {idx}. {country.name} ({country.code})")
-
     while True:
         raw = prompt("Enter number: ")
         try:
@@ -78,13 +82,14 @@ def choose_country() -> "object":
 
 
 def choose_pattern(country) -> str:
-    """Prompt the user to pick a predefined pattern or enter a custom one."""
     print()
     print(f"Available patterns for {country.name}:")
     for idx, pat in enumerate(country.patterns, start=1):
         print(f"  {idx}. {pat}")
     custom_idx = len(country.patterns) + 1
     print(f"  {custom_idx}. Enter a custom pattern")
+    print()
+    print("  Syntax: X = any digit, [0-5] = range, [02468] = set, [0,2,4] = set")
 
     while True:
         raw = prompt("Enter number: ")
@@ -95,7 +100,7 @@ def choose_pattern(country) -> str:
             continue
 
         if choice == custom_idx:
-            custom = prompt("Enter custom pattern (use 'X' for unknown digits): ")
+            custom = prompt("Enter custom pattern: ")
             try:
                 return validate_pattern(custom)
             except ValidationError as exc:
@@ -106,12 +111,13 @@ def choose_pattern(country) -> str:
 
 
 def show_settings() -> None:
-    """Show configurable constants."""
     print()
     print("Current settings:")
     print(f"  Confirmation threshold : {CONFIRMATION_THRESHOLD:,} combinations")
     print(f"  Maximum combinations   : {MAX_COMBINATIONS:,}")
     print(f"  Placeholder character  : X")
+    print(f"  Supported formats      : {', '.join(SUPPORTED_FORMATS)}")
+    print(f"  Version                : {VERSION}")
     print()
     print("(Edit config.py to change these values.)")
     pause()
@@ -122,7 +128,6 @@ def show_settings() -> None:
 # ---------------------------------------------------------------------------
 
 def confirm_large_generation(total: int) -> bool:
-    """Ask the user to confirm generation if `total` is large."""
     if total <= CONFIRMATION_THRESHOLD:
         return True
     print()
@@ -132,7 +137,6 @@ def confirm_large_generation(total: int) -> bool:
 
 
 def choose_output_mode() -> str:
-    """Return 'terminal' or 'file'."""
     print()
     print("Output options:")
     print("  1. Preview in terminal (first 50 results)")
@@ -146,10 +150,36 @@ def choose_output_mode() -> str:
             print(f"  [!] {exc}")
 
 
-def ask_for_output_path() -> str:
-    """Ask for directory and filename, then return the full path."""
-    import os
+def choose_format() -> str:
+    print()
+    print("Output format:")
+    print("  1. TXT   (plain text, one number per line)")
+    print("  2. CSV   (with header)")
+    print("  3. JSONL (one JSON object per line)")
+    while True:
+        raw = prompt("Enter number: ")
+        try:
+            choice = validate_menu_choice(raw, 1, 3)
+            return SUPPORTED_FORMATS[choice - 1]
+        except ValidationError as exc:
+            print(f"  [!] {exc}")
 
+
+def choose_compression() -> bool:
+    print()
+    print("Compress output with gzip?")
+    print("  1. No  (plain file)")
+    print("  2. Yes (file + .gz, much smaller for large jobs)")
+    while True:
+        raw = prompt("Enter number: ")
+        try:
+            choice = validate_menu_choice(raw, 1, 2)
+            return choice == 2
+        except ValidationError as exc:
+            print(f"  [!] {exc}")
+
+
+def ask_for_output_path(fmt: str, compressed: bool) -> str:
     while True:
         directory = prompt(
             f"Output directory [press Enter for '{DEFAULT_OUTPUT_DIR}']: "
@@ -160,21 +190,71 @@ def ask_for_output_path() -> str:
         except ValidationError as exc:
             print(f"  [!] {exc}")
 
+    # Build a default filename suggestion based on format + compression.
+    suggested = DEFAULT_OUTPUT_FILENAME
+    if suggested.endswith(".txt") and fmt != "txt":
+        suggested = suggested[: -len(".txt")] + f".{fmt}"
+
     while True:
         filename = prompt(
-            f"Filename [press Enter for '{DEFAULT_OUTPUT_FILENAME}']: "
-        ) or DEFAULT_OUTPUT_FILENAME
+            f"Filename [press Enter for '{suggested}']: "
+        ) or suggested
         try:
-            filename = validate_filename(filename)
+            filename = validate_filename(filename, fmt=fmt)
             break
         except ValidationError as exc:
             print(f"  [!] {exc}")
 
-    return os.path.join(directory, filename)
+    path = os.path.join(directory, filename)
+    if compressed and not path.endswith(".gz"):
+        path += ".gz"
+    return path
+
+
+def maybe_resume(path: str, pattern: str, fmt: str, compressed: bool) -> dict | None:
+    """Check for a state file and ask the user whether to resume."""
+    state = load_state(path)
+    if not state:
+        return None
+
+    same_pattern = state.get("pattern") == pattern
+    written = state.get("written", 0)
+
+    print()
+    print(f"  [!] Found a previous run in progress:")
+    print(f"      File     : {path}")
+    print(f"      Written  : {written:,}")
+    print(f"      Pattern  : {state.get('pattern')}")
+    if not same_pattern:
+        print(f"      WARNING  : This pattern differs from the current one.")
+    print()
+    print("  1. Resume from where it stopped")
+    print("  2. Start over (delete previous output)")
+    print("  3. Cancel")
+
+    while True:
+        raw = prompt("  Select: ")
+        try:
+            choice = validate_menu_choice(raw, 1, 3)
+        except ValidationError as exc:
+            print(f"  [!] {exc}")
+            continue
+
+        if choice == 1:
+            return state
+        if choice == 2:
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError as exc:
+                print(f"  [!] Could not remove old file: {exc}")
+                return None
+            clear_state(path)
+            return None
+        return {"_cancelled": True}
 
 
 def run_generation() -> None:
-    """Full interactive generation workflow."""
     country = choose_country()
     pattern = choose_pattern(country)
 
@@ -184,7 +264,7 @@ def run_generation() -> None:
     print()
     print(f"  Country              : {country.name} ({country.code})")
     print(f"  Pattern              : {pattern}")
-    print(f"  Unknown positions    : {unknowns}")
+    print(f"  Variable positions   : {unknowns}")
     print(f"  Total combinations   : {total:,}")
 
     if total > MAX_COMBINATIONS:
@@ -205,14 +285,49 @@ def run_generation() -> None:
     if mode == "terminal":
         print()
         print("Preview:")
-        print("-" * 40)
+        print("-" * 44)
         preview_in_terminal(iter_combinations(pattern), total)
-        print("-" * 40)
-    else:
-        path = ask_for_output_path()
-        written = write_to_file(iter_combinations(pattern), path, total)
-        print_summary(written, total, path)
+        print("-" * 44)
+        pause()
+        return
 
+    # File mode
+    fmt = choose_format()
+    compressed = choose_compression()
+    path = ask_for_output_path(fmt, compressed)
+
+    resume_state = maybe_resume(path, pattern, fmt, compressed)
+    if resume_state and resume_state.get("_cancelled"):
+        print("  Cancelled.")
+        pause()
+        return
+
+    previously_written = resume_state.get("written", 0) if resume_state else 0
+
+    metadata = {
+        "pattern": pattern,
+        "country": country.name,
+        "country_code": country.code,
+    }
+
+    written_now = write_to_file(
+        iter_combinations(pattern),
+        path,
+        total,
+        fmt=fmt,
+        compressed=compressed,
+        resume_state=resume_state,
+        metadata=metadata,
+    )
+
+    print_summary(
+        written_now=written_now,
+        previously_written=previously_written,
+        total=total,
+        path=path,
+        fmt=fmt,
+        compressed=compressed,
+    )
     pause()
 
 
@@ -221,7 +336,6 @@ def run_generation() -> None:
 # ---------------------------------------------------------------------------
 
 def main_menu() -> None:
-    """Main interactive loop."""
     while True:
         print()
         print(BANNER)
