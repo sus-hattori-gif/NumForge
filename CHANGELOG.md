@@ -1,41 +1,26 @@
 # Changelog
 
-All notable changes to NumForge are documented in this file.
-
-## [1.1.0] — 2025
+## [1.2.0] — 2025
 
 ### Added
-- **Advanced pattern syntax**:
-  - `[0-5]` digit ranges
-  - `[02468]` digit sets
-  - `[0,2,4,6,8]` comma-separated sets
-  - `[0-3,7,9]` mixed ranges and digits
-  - All classes are case-independent of `X` and can coexist.
-- **Multiple output formats**: `txt`, `csv`, `jsonl`.
-  - CSV includes a header and one number per row.
-  - JSONL stores one `{"number": ..., "pattern": ..., "country": ...}` per line.
-- **gzip compression** for output files (`.gz` extension).
-- **Resume support**: interrupted jobs can be continued from the exact
-  position via an atomic `.numforge.state` file. State file is
-  automatically deleted after successful completion.
-- **ETA display** during generation, plus improved progress formatting.
-- **File size** and **format** shown in the completion summary.
-- **Responsible-use notice** printed at the end of every generation.
+- **Non-interactive CLI** (`python main.py generate ...`, `preview`, `countries`, `profile`).
+- **`--validate` flag**: applies lightweight local country rules (length + prefix)
+  to drop structurally impossible numbers. Purely local; no network.
+- **Multi-pattern input** via `--patterns-file patterns.txt` (one pattern per line,
+  `#` comments allowed).
+- **User profiles** stored as TOML in `./profiles/` or `~/.numforge/profiles/`.
+  Manage via `python main.py profile list|show|save|delete`.
+- **Log levels** `--log quiet|normal|verbose` for scripts and CI.
+- **Exit codes**: 0 success, 1 runtime error, 2 invalid input.
 
 ### Changed
-- `validators.validate_pattern` now delegates full syntax checking to
-  the parser (single source of truth).
-- `generator.iter_combinations` accepts an optional `start_index` for
-  efficient resume via `itertools.islice`.
-- `output.write_to_file` signature extended with `fmt`, `compressed`,
-  `resume_state`, and `metadata` (backward-incompatible with v1.0 callers).
-- `validators.validate_filename` now enforces the correct extension
-  for the chosen format.
-
-### Fixed
-- Terminal progress no longer leaves an orphan newline when interrupted.
-- CSV header is written only once, even on resume.
+- `main.py` now detects CLI usage automatically; interactive menu moved to `interactive.py`.
+- `countries.py` restructured: each country now has an `id` slug and a `CountryRules`.
+- `write_to_file` gains a `quiet` parameter.
+- Version bumped to `1.2.0`.
 
 ### Notes
-- NumForge remains a **purely local** tool. No network requests,
-  no verification, no messaging, no telecom interaction.
+- NumForge remains a purely local pattern-combination generator.
+  It does **not** verify real phone numbers, does **not** make network
+  requests, and does **not** interact with any telecom service.
+  The `--validate` flag only performs local length + prefix checks.
