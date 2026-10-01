@@ -192,3 +192,90 @@ development, and educational use. It does **not**:
 You are responsible for how you use this tool and for complying with all
 applicable laws in your jurisdiction. Do not use NumForge for spam,
 harassment, unauthorized access, or any illegal activity.
+
+---
+
+## Non-Interactive CLI (v1.2)
+
+Run NumForge without the interactive menu:
+
+```bash
+# Basic generation
+python main.py generate -c ir -p "0912XXX1234" -o out.txt
+
+# CSV output with gzip
+python main.py generate -c ir -p "0912XXX" -o out.csv.gz -f csv --gzip
+
+# Apply structural rules
+python main.py generate -c ir -p "09XXXXXXXXX" -o out.txt --validate
+
+# Multi-pattern from file
+python main.py generate -c ir --patterns-file patterns.txt -o all.txt
+
+# Load a saved profile
+python main.py generate --profile iran-tests
+
+# Preview only
+python main.py preview -c ir -p "0912XXX" -n 20
+
+# List countries
+python main.py countries
+
+# Version
+python main.py --version
+```
+
+### Flags
+
+| Flag | Description |
+|---|---|
+| `-c, --country` | Country id (`ir`, `az`, `tr`, `us`, `uk`) |
+| `-p, --pattern` | Pattern with `X` and `[...]` |
+| `--patterns-file` | File with one pattern per line |
+| `-o, --output` | Output file path |
+| `-f, --format` | `txt`, `csv`, `jsonl` |
+| `--gzip` | Compress with gzip |
+| `--validate` | Apply local country rules |
+| `--max N` | Override max combinations |
+| `-y, --yes` | Skip large-job confirmation |
+| `--log` | `quiet`, `normal`, `verbose` |
+
+### Exit Codes
+
+- `0` — success
+- `1` — runtime error
+- `2` — invalid input
+
+## Profiles
+
+Save reusable settings:
+
+```bash
+python main.py profile save iran-tests -c ir -p "0912XXX" -f csv --gzip --validate
+python main.py profile list
+python main.py profile show iran-tests
+python main.py generate --profile iran-tests
+```
+
+Profiles live in `./profiles/<name>.toml` or `~/.numforge/profiles/<name>.toml`.
+
+### Example profile
+
+```toml
+name = "iran-tests"
+country = "ir"
+pattern = "0912[0-5]XX1234"
+format = "csv"
+compressed = true
+output_dir = "./results"
+validate = true
+```
+
+## Local Structural Validation
+
+With `--validate`, NumForge filters out combinations that cannot be
+real phone numbers *for the selected country* — based only on local
+length and prefix rules.
+
+**This is not verification.** It does not check whether a number
+exists, is assigned, or is reachable. It never contacts any service.

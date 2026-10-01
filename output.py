@@ -126,6 +126,7 @@ def write_to_file(
     compressed: bool = False,
     resume_state: Optional[dict] = None,
     metadata: Optional[dict] = None,
+    quiet: bool = False,
 ) -> int:
     """Write all combinations from `iterator` to `path`.
 
@@ -240,7 +241,7 @@ def write_to_file(
     sys.stdout.write(
         f"\r  Progress: {done_total:,}/{total:,} (100.0%) | "
         f"{speed:,.0f} gen/s | elapsed {elapsed:5.1f}s"
-    )
+        )
     sys.stdout.flush()
     print()
 
